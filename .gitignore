@@ -1,0 +1,7 @@
+# Secrets / machine overrides only. Mode files (.env.development etc.) are committed.
+.env
+.env.local
+.env.*.local
+!.env.example
+node_modules
+dist

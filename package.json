@@ -1,0 +1,26 @@
+{
+  "name": "mitdo-garden-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --mode development",
+    "build": "vite build --mode production",
+    "build:test": "vite build --mode test",
+    "preview": "vite preview --mode production",
+    "preview:test": "vite preview --mode test"
+  },
+  "dependencies": {
+    "@uiw/react-md-editor": "^4.1.2",
+    "lucide-react": "^0.462.0",
+    "marked": "^18.1.1",
+    "mermaid": "^11.17.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "vite": "^8.3.4"
+  }
+}
