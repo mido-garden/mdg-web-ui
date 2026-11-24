@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - "**.md"
+      - "**/*.md"
       - ".github/workflows/ci.yml"
   workflow_dispatch:
 
@@ -20,25 +20,32 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: mitdo-cloud
+
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run build
 
-      - name: Inspect OIDC Token Claims
-        run: |
-          JWT=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
-          echo "$JWT" | cut -d '.' -f 2 | base64 -d 2>/dev/null | jq '{iss, aud, sub}'
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: github-actions-${{ github.run_id }}
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
 
       - name: Upload artifacts to S3
         env:
@@ -46,28 +53,34 @@ jobs:
         run: |
           set -euo pipefail
           aws s3 sync dist/ "s3://${BUCKET}/dist/" --delete
-          aws s3 cp deploy/nginx.mitdo.cloud.conf "s3://${BUCKET}/nginx/nginx.mitdo.cloud.conf"
+          aws s3 cp deploy/nginx.mitdo.cloud.conf \
+            "s3://${BUCKET}/nginx/nginx.mitdo.cloud.conf"
 
-      - name: Deploy on EC2 via SSM
+      - name: Deploy application on EC2 via SSM
         env:
           BUCKET: ${{ vars.DEPLOY_BUCKET }}
           INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
         run: |
           set -euo pipefail
-          COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name "AWS-RunShellScript" \
-            --parameters "commands=[
-              'set -euo pipefail',
-              'aws s3 sync s3://${BUCKET}/dist/ /var/www/mitdo/dist/ --delete',
-              'chown -R ubuntu:ubuntu /var/www/mitdo/dist',
-              'aws s3 cp s3://${BUCKET}/nginx/nginx.mitdo.cloud.conf /etc/nginx/sites-available/mitdo.cloud',
-              'ln -sf /etc/nginx/sites-available/mitdo.cloud /etc/nginx/sites-enabled/mitdo.cloud',
-              'nginx -t',
-              'systemctl reload nginx'
-            ]" \
-            --query "Command.CommandId" \
-            --output text)
+
+          COMMAND_ID=$(
+            aws ssm send-command \
+              --instance-ids "$INSTANCE_ID" \
+              --document-name "AWS-RunShellScript" \
+              --parameters "commands=[
+                'set -euo pipefail',
+                'aws s3 sync s3://${BUCKET}/dist/ /var/www/mitdo/dist/ --delete',
+                'chown -R ubuntu:ubuntu /var/www/mitdo/dist',
+                'aws s3 cp s3://${BUCKET}/nginx/nginx.mitdo.cloud.conf /etc/nginx/sites-available/mitdo.cloud',
+                'ln -sf /etc/nginx/sites-available/mitdo.cloud /etc/nginx/sites-enabled/mitdo.cloud',
+                'nginx -t',
+                'systemctl reload nginx'
+              ]" \
+              --query "Command.CommandId" \
+              --output text
+          )
+
+          echo "SSM command ID: $COMMAND_ID"
 
           aws ssm wait command-executed \
             --command-id "$COMMAND_ID" \
