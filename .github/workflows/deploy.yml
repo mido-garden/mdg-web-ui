@@ -1,22 +1,3 @@
-# Build the production bundle and rsync it to the Ubuntu EC2 host behind mitdo.cloud.
-#
-# Repo secrets (or environment mitdo-cloud):
-#   EC2_HOST              public IP or mitdo.cloud
-#   EC2_SSH_PRIVATE_KEY   private key whose public half is in ubuntu@host:~/.ssh/authorized_keys
-# Optional:
-#   EC2_USER              default ubuntu
-#   EC2_SSH_PORT          default 22
-#
-# One-time on the instance:
-#   sudo apt-get update && sudo apt-get install -y nginx rsync
-#   sudo mkdir -p /var/www/mitdo/dist
-#   sudo chown -R ubuntu:ubuntu /var/www/mitdo
-#   sudo cp deploy/nginx.mitdo.cloud.conf /etc/nginx/sites-available/mitdo.cloud
-#   sudo ln -sf /etc/nginx/sites-available/mitdo.cloud /etc/nginx/sites-enabled/mitdo.cloud
-#   sudo rm -f /etc/nginx/sites-enabled/default
-#   echo 'ubuntu ALL=(ALL) NOPASSWD: /usr/sbin/nginx, /bin/systemctl' | sudo tee /etc/sudoers.d/mitdo-nginx
-#   sudo chmod 440 /etc/sudoers.d/mitdo-nginx
-#   sudo nginx -t && sudo systemctl enable --now nginx
 name: deploy
 
 on:
@@ -33,6 +14,7 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   deploy:
@@ -47,32 +29,41 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      - name: Configure SSH
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "$EC2_SSH_PRIVATE_KEY" > ~/.ssh/ec2
-          chmod 600 ~/.ssh/ec2
-          ssh-keyscan -p "${{ secrets.EC2_SSH_PORT || 22 }}" -H "$EC2_HOST" >> ~/.ssh/known_hosts
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Publish dist
+      - name: Upload artifacts to S3
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER || 'ubuntu' }}
-          EC2_PORT: ${{ secrets.EC2_SSH_PORT || 22 }}
+          BUCKET: ${{ secrets.DEPLOY_BUCKET }}
         run: |
           set -euo pipefail
-          remote="${EC2_USER}@${EC2_HOST}"
-          ssh_opts=(-i ~/.ssh/ec2 -p "$EC2_PORT" -o IdentitiesOnly=yes)
-          rsync -az --delete -e "ssh ${ssh_opts[*]}" dist/ "${remote}:/var/www/mitdo/dist/"
-          rsync -az -e "ssh ${ssh_opts[*]}" deploy/nginx.mitdo.cloud.conf "${remote}:/tmp/nginx.mitdo.cloud.conf"
-          ssh "${ssh_opts[@]}" "$remote" 'set -euo pipefail
-            sudo cp /tmp/nginx.mitdo.cloud.conf /etc/nginx/sites-available/mitdo.cloud
-            sudo ln -sf /etc/nginx/sites-available/mitdo.cloud /etc/nginx/sites-enabled/mitdo.cloud
-            sudo nginx -t
-            sudo systemctl reload nginx
-          '
+          aws s3 sync dist/ "s3://${BUCKET}/dist/" --delete
+          aws s3 cp deploy/nginx.mitdo.cloud.conf "s3://${BUCKET}/nginx/nginx.mitdo.cloud.conf"
+
+      - name: Deploy on EC2 via SSM
+        env:
+          BUCKET: ${{ secrets.DEPLOY_BUCKET }}
+          INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+        run: |
+          set -euo pipefail
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=[
+              'set -euo pipefail',
+              'aws s3 sync s3://${BUCKET}/dist/ /var/www/mitdo/dist/ --delete',
+              'chown -R ubuntu:ubuntu /var/www/mitdo/dist',
+              'aws s3 cp s3://${BUCKET}/nginx/nginx.mitdo.cloud.conf /etc/nginx/sites-available/mitdo.cloud',
+              'ln -sf /etc/nginx/sites-available/mitdo.cloud /etc/nginx/sites-enabled/mitdo.cloud',
+              'nginx -t',
+              'systemctl reload nginx'
+            ]" \
+            --query "Command.CommandId" \
+            --output text)
+
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID"
