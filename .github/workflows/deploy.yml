@@ -22,20 +22,63 @@ jobs:
     environment: mitdo-cloud
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
+      - run: npm run build
 
-      - name: Build application
-        run: npm run build
+      - name: Diagnose GitHub OIDC configuration
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          echo "Repository: ${GITHUB_REPOSITORY}"
+          echo "Ref: ${GITHUB_REF}"
+          echo "Event: ${GITHUB_EVENT_NAME}"
+          echo "Expected environment: mitdo-cloud"
+          echo "AWS role ARN: ${AWS_ROLE_ARN:-<empty>}"
+          echo "AWS region: ${AWS_REGION:-<empty>}"
+
+          [[ -n "${AWS_ROLE_ARN:-}" ]] || {
+            echo "::error::AWS_ROLE_ARN is unavailable";
+            exit 1;
+          }
+          [[ -n "${AWS_REGION:-}" ]] || {
+            echo "::error::AWS_REGION is unavailable";
+            exit 1;
+          }
+
+          oidc_response="$(
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com"
+          )"
+
+          claims="$(
+            jq -r '.value' <<< "$oidc_response" |
+            python3 -c '
+          import base64, json, sys
+          token = sys.stdin.read().strip()
+          parts = token.split(".")
+          if len(parts) != 3:
+              raise SystemExit("Invalid OIDC JWT")
+          payload = parts[1] + "=" * (-len(parts[1]) % 4)
+          data = json.loads(base64.urlsafe_b64decode(payload))
+          print(json.dumps(
+              {key: data.get(key) for key in ("iss", "aud", "sub")},
+              indent=2
+          ))
+          '
+          )"
+
+          echo "OIDC token claims (JWT withheld):"
+          echo "$claims"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
@@ -47,7 +90,7 @@ jobs:
       - name: Verify AWS identity
         run: aws sts get-caller-identity
 
-      - name: Upload artifacts to S3
+      - name: Upload artifacts
         env:
           BUCKET: ${{ vars.DEPLOY_BUCKET }}
         run: |
@@ -56,14 +99,13 @@ jobs:
           aws s3 cp deploy/nginx.mitdo.cloud.conf \
             "s3://${BUCKET}/nginx/nginx.mitdo.cloud.conf"
 
-      - name: Deploy application on EC2 via SSM
+      - name: Deploy via SSM
         env:
           BUCKET: ${{ vars.DEPLOY_BUCKET }}
           INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
         run: |
           set -euo pipefail
-
-          COMMAND_ID=$(
+          COMMAND_ID="$(
             aws ssm send-command \
               --instance-ids "$INSTANCE_ID" \
               --document-name "AWS-RunShellScript" \
@@ -78,10 +120,8 @@ jobs:
               ]" \
               --query "Command.CommandId" \
               --output text
-          )
-
+          )"
           echo "SSM command ID: $COMMAND_ID"
-
           aws ssm wait command-executed \
             --command-id "$COMMAND_ID" \
             --instance-id "$INSTANCE_ID"
