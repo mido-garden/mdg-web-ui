@@ -32,12 +32,12 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Upload artifacts to S3
         env:
-          BUCKET: ${{ secrets.DEPLOY_BUCKET }}
+          BUCKET: ${{ vars.DEPLOY_BUCKET }}
         run: |
           set -euo pipefail
           aws s3 sync dist/ "s3://${BUCKET}/dist/" --delete
@@ -45,8 +45,8 @@ jobs:
 
       - name: Deploy on EC2 via SSM
         env:
-          BUCKET: ${{ secrets.DEPLOY_BUCKET }}
-          INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          BUCKET: ${{ vars.DEPLOY_BUCKET }}
+          INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
         run: |
           set -euo pipefail
           COMMAND_ID=$(aws ssm send-command \
