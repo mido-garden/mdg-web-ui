@@ -49,7 +49,7 @@ export default function LoginScreen() {
       </button>
       <section className="login-card" aria-labelledby="login-title">
         <div className="logo">Mitdo</div>
-        <h1 id="login-title">Sign in</h1>
+        <h1 id="login-title">Sign In</h1>
         <p className="muted sm">Access your garden with this account.</p>
         {error && <p className="login-error sm" role="alert">{error}</p>}
         <button type="button" className="auth-btn" disabled={!!pending} onClick={() => signIn('google')}>
