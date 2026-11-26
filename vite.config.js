@@ -6,12 +6,16 @@ import react from '@vitejs/plugin-react'
 export default defineConfig(({ mode }) => {
   const file = loadEnv(mode, process.cwd(), '')
   const authOrigin = process.env.AUTH_API_ORIGIN || file.AUTH_API_ORIGIN || 'http://localhost:5000'
-  const apiBase = (file.VITE_API_BASE_URL || '/v1').replace(/\/+$/, '') || '/v1'
-  const proxy = {
-    [apiBase]: {
+  const apiBase = (file.VITE_API_BASE_URL || '').replace(/\/+$/, '')
+  const proxy = {}
+
+  // Proxy only same-origin development/test paths. Absolute public API hosts
+  // are called directly by the browser and must not become proxy keys.
+  if (apiBase && !/^https?:\/\//i.test(apiBase)) {
+    proxy[apiBase] = {
       target: authOrigin,
       changeOrigin: true,
-    },
+    }
   }
 
   return {

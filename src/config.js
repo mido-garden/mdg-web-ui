@@ -21,8 +21,9 @@ export const config = Object.freeze({
   isDev: import.meta.env.DEV,
   isProd: import.meta.env.PROD,
   isTest: appEnv === 'test',
-  /** Auth API base: absolute (http://localhost:8080/v1) or same-origin (/v1). */
-  apiBaseUrl: stripTrailingSlash(import.meta.env.VITE_API_BASE_URL || '/v1'),
+  /** Auth API base: absolute (https://api.example.com) or same-origin (''). */
+  apiBaseUrl: stripTrailingSlash(import.meta.env.VITE_API_BASE_URL || ''),
+
   /**
    * Tempo/garden API (mdg-tempo-svc). Empty disables remote garden calls (local store only).
    * Dev default: http://localhost:8081/v1
@@ -61,9 +62,12 @@ function withPageHost(base) {
 function joinBase(base, path = '') {
   const p = path.startsWith('/') ? path : `/${path}`
   if (!path) return base
+  if (!base) return p
   return `${base}${p}`
 }
 
 function stripTrailingSlash(value) {
-  return String(value || '').replace(/\/+$/, '') || '/'
+  const text = String(value || '').trim()
+  if (!text) return ''
+  return text.replace(/\/+$/, '') || ''
 }

@@ -100,7 +100,7 @@ export default function App() {
 
   useEffect(() => {
     let stop = false
-    // Probe /me once; on 401 apiFetch will try /auth/refresh then retry (expired access cookie).
+    // Probe /auth/me once; on 401 apiFetch will try /auth/refresh then retry (expired access cookie).
     fetchMe().then((me) => {
       if (stop) return
       if (me) dispatch({ type: 'signIn', user: me })

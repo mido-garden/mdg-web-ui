@@ -24,7 +24,7 @@ npm install
 npm run dev               # http://localhost:5173
 ```
 
-Register Google redirect URI: `http://localhost:8080/v1/auth/google/callback` (on **mdg-auth-svc**, not this app).
+Register Google redirect URI: `http://localhost:8080/auth/google/callback` (on **mdg-auth-svc**, not this app).
 
 ## Structure
 

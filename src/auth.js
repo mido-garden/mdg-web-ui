@@ -17,7 +17,7 @@ export function startGithub() {
   startProvider('/auth/github')
 }
 
-/** Short cache so React Strict Mode (dev double-mount) does not double-hit /me. */
+/** Short cache so React Strict Mode (dev double-mount) does not double-hit /auth/me. */
 let meInFlight = null
 let meCached = undefined
 let meCachedAt = 0
@@ -26,7 +26,7 @@ const ME_CACHE_MS = 2000
 export function clearMeCache() {
   meCached = undefined
   meCachedAt = 0
-  // Do not clear meInFlight here — that lets a second /me start mid-request and loops.
+  // Do not clear meInFlight here — that lets a second /auth/me start mid-request and loops.
 }
 
 /**
@@ -45,7 +45,7 @@ export async function fetchMe() {
   }
   meInFlight = (async () => {
     try {
-      const res = await apiFetch('/me')
+      const res = await apiFetch('/auth/me')
       if (!res.ok) {
         meCached = null
         meCachedAt = Date.now()

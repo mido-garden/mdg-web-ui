@@ -8,10 +8,10 @@ This repository does not use Docker, Nginx, ECR, EC2, or SSM for the UI. Do not 
 
 ```text
 Browser
-  ├── mitdo.cloud/assets/*  ──> CloudFront ──> S3 private bucket
-  ├── mitdo.cloud/*         ──> CloudFront ──> S3, SPA fallback
-  ├── mitdo.cloud/v1/*      ──> CloudFront ──> mdg-auth-svc
-  └── mitdo.cloud/tempo/v1/* ─> CloudFront ──> mdg-tempo-svc
+  ├── mitdo.cloud/assets/*      ──> CloudFront ──> S3 private bucket
+  ├── mitdo.cloud/*             ──> CloudFront ──> S3, SPA fallback
+  ├── api.mitdo.cloud/*         ──> mdg-auth-svc
+  └── tempo.mitdo.cloud/*       ──> mdg-tempo-svc
 ```
 
 The S3 bucket is not public and static website hosting is not required.
@@ -73,7 +73,7 @@ www.mitdo.cloud
 ```
 
 - **Custom SSL certificate:** select the ACM certificate created in `us-east-1`.
-- **Default cache behavior:** Cache policy `CachingOptimized`, or a policy that caches the static UI while not caching `/v1/*` or `/tempo/v1/*`.
+- **Default cache behavior:** Cache policy `CachingOptimized`, because API traffic uses separate public API hosts and does not pass through this UI CloudFront distribution.
 
 After creating the distribution, copy the CloudFront distribution domain name, for example:
 
@@ -109,33 +109,32 @@ HTTP status code: 200
 
 Do not add these fallbacks to API paths. API paths must use separate cache behaviors that never return `index.html` for API errors.
 
-## 5. Configure API origins and cache behaviors
+## 5. Configure the public API hosts
 
-Create origin entries for the API services that are reachable by CloudFront:
+Deploy the API services with separate public hostnames:
 
-- `mdg-auth-svc` origin, including Load Balancer or public API hostname
-- `mdg-tempo-svc` origin, including Load Balancer or public API hostname
+- `api.mitdo.cloud` → `mdg-auth-svc`
+- `tempo.mitdo.cloud` → `mdg-tempo-svc`
 
-Add ordered cache behaviors:
+The public API paths do not include `/v1`. Examples:
 
 ```text
-/v1/*       -> auth origin
-/tempo/v1/* -> tempo origin
+https://api.mitdo.cloud/auth/google
+https://api.mitdo.cloud/me
+https://tempo.mitdo.cloud/map
+https://tempo.mitdo.cloud/tempos/:id
 ```
 
-For APIs:
+Configure each service directly behind TLS through an Application Load Balancer, EC2 endpoint, or its existing proxy. Forward cookies and the required HTTP methods. Disable caching for both API hosts.
 
-- Forward all required HTTP methods: `GET`, `HEAD`, `OPTIONS`, `POST`, `PUT`, `PATCH`, `DELETE`
-- Use `CachePolicyId` for `CachingDisabled` or disable caching
-- Use `OriginRequestPolicyId` for `AllViewerExceptHostHeader` if the origin does not require the viewer Host header
-- Forward cookies
-- Forward `Authorization` and relevant headers only if the service requires them
-- Forward the `Origin` header for CORS
-- If CloudFront replaces the Host header, configure a provider origin host where required
+For OAuth navigation routes under `/auth/google` and `/auth/github`, the auth origin must receive browser requests and set the session cookie for `mitdo.cloud`.
 
-For OAuth navigation routes under `/v1/auth/google` and `/v1/auth/github`, the auth origin must receive browser requests and set the session cookie for `mitdo.cloud`.
+CORS must allow `https://mitdo.cloud` and credentials. OAuth callback URLs must use `api.mitdo.cloud`:
 
-CORS may be unnecessary for same-origin production requests when CloudFront forwards `/v1/*` and `/tempo/v1/*` to the services.
+```text
+https://api.mitdo.cloud/auth/google/callback
+https://api.mitdo.cloud/auth/github/callback
+```
 
 ## 6. Configure DNS
 
@@ -257,11 +256,7 @@ Deploy manually from **Actions → deploy production S3 → Run workflow**.
 
 - `index.html` and non-hashed files: `public, max-age=0, must-revalidate`
 - files under `assets/`: `public, max-age=31536000, immutable`
-- `/v1/*` and `/tempo/v1/*`: disable caching
-
-A CloudFront invalidation is necessary after publishing `index.html`. Browser revalidation is the default for HTML, but invalidation also ensures existing CloudFront edge caches remove the previous HTML immediately.
-
-Do not invalidate S3 deployment jobs continuously for every request; invalidations are only needed after releases.
+- `api.mitdo.cloud` and `tempo.mitdo.cloud`: disable caching for authenticated API responses
 
 ## 10. Verify the deployment
 
@@ -271,18 +266,15 @@ After a successful workflow run:
 # Confirm DNS resolves to CloudFront
 dig mitdo.cloud
 
-# Confirm the site responds over HTTPS
+# Confirm the UI responds over HTTPS
 curl -I https://mitdo.cloud/
 
 # Confirm a React route is served by index.html
 curl -I https://mitdo.cloud/tempos/t_dns
 
-# Confirm static assets resolve
-curl -I https://mitdo.cloud/assets/<hashed-file-name>.js
-
-# Confirm API routing
-curl -i https://mitdo.cloud/v1/me
-curl -i https://mitdo.cloud/tempo/v1/map
+# Confirm public API hosts do not use /v1
+curl -i https://api.mitdo.cloud/me
+curl -i https://tempo.mitdo.cloud/map
 ```
 
 In a browser:
@@ -294,7 +286,7 @@ In a browser:
 5. Confirm tempo list and review APIs work.
 6. Open a tempo directly at `/tempos/:id`.
 7. Refresh the page on `/tempos/:id`.
-8. Confirm assets and API calls use `mitdo.cloud`, not localhost or an S3 URL.
+8. Confirm API calls use `api.mitdo.cloud` or `tempo.mitdo.cloud`, not localhost or `/v1`.
 
 ## 11. Troubleshooting
 
@@ -315,15 +307,11 @@ The CloudFront distribution needs 403/404 custom error responses that return `/i
 
 ### API returns the React HTML document
 
-The `/v1/*` and `/tempo/v1/*` CloudFront cache behaviors are missing or ordered after the default behavior. Move the API behaviors above the default behavior and exclude them from SPA error handling.
+The API hostname is not routing to the correct backend, or DNS is pointing the API hostname at the UI CloudFront distribution. Point `api.mitdo.cloud` and `tempo.mitdo.cloud` directly to their API origins.
 
 ### Sign-in cookie is missing
 
-- Set OAuth redirects to the production auth service/callback URL.
-- Keep API and UI on the same-site domain.
-- Confirm `mitdo_session` uses the correct domain and `Secure`, `HttpOnly`, and `SameSite` settings.
-- Confirm CloudFront forwards cookies and uses no incompatible cache policy for `/v1/*`.
-
-### The deployment succeeds but the old UI remains
-
-Confirm `CLOUDFRONT_DISTRIBUTION_ID` is set and invalidate `/*`. If no ID is configured, set one and rerun the workflow.
+- Set OAuth redirects to `api.mitdo.cloud`.
+- Set the cookie domain to `.mitdo.cloud`.
+- Use `Secure=true`, `HttpOnly=true`, and `SameSite=Lax`.
+- Allow `https://mitdo.cloud` in CORS with credentialed requests enabled.
