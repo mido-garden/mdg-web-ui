@@ -105,12 +105,12 @@ export function applyScheduleToStore(schedule, local = {}) {
 
 /** Lightweight queue: { source, items: [{ id, name, tags, confidence, due }] }. */
 export function getReview() {
-  return tempoJson('/review')
+  return tempoJson('/tempos/review')
 }
 
 /** Card payload for one review tempo (content, examples, media, tags). */
 export function getReviewTempo(id) {
-  return tempoJson(`/review/tempos/${encodeURIComponent(id)}`)
+  return tempoJson(`/tempos/review/${encodeURIComponent(id)}`)
 }
 
 export function postReview(id, rating) {
@@ -188,7 +188,7 @@ export function putTags(id, tags) {
 
 export function searchTags(q) {
   const qs = q ? `?q=${encodeURIComponent(q)}` : ''
-  return tempoJson(`/tags${qs}`)
+  return tempoJson(`/tempos/tags${qs}`)
 }
 
 export function postMedia(id, { kind, url, title }) {
@@ -205,11 +205,11 @@ export function deleteMedia(id, mediaId) {
 }
 
 export function getTelegramChat() {
-  return tempoJson('/settings/telegram')
+  return tempoJson('/tempos/settings/telegram')
 }
 
 export function saveTelegramChat(chatId) {
-  return tempoJson('/settings/telegram', {
+  return tempoJson('/tempos/settings/telegram', {
     method: 'PATCH',
     body: JSON.stringify({ chatId }),
   })
@@ -236,10 +236,10 @@ export function getMap(params = {}) {
   qs.set('limit', String(limit))
   qs.set('offset', String(Math.max(0, offset)))
   const suffix = qs.toString() ? `?${qs}` : ''
-  return tempoJson(`/map${suffix}`)
+  return tempoJson(`/tempos/map${suffix}`)
 }
 
-/** List stub from GET /map (no content — detail via getTempo). */
+/** List stubs from GET /tempos/map (no content — detail via getTempo). */
 export function mapToGarden(map) {
   const tempos = (map?.tempos || []).map((item) => {
     const dueMs = item.due ? Date.parse(item.due) : Date.now()

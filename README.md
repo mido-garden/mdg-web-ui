@@ -1,6 +1,6 @@
 # Mitdo garden app (React)
 
-React 18 + Vite. Garden data loads from [`mdg-tempo-svc`](../mdg-tempo-svc). **Google sign-in** uses sibling service [`mdg-auth-svc`](../mdg-auth-svc) (Go + MySQL); Vite proxies `/v1` to it.
+React 18 + Vite. Garden data loads from [`mdg-tempo-svc`](../mdg-tempo-svc) under `/tempos`. **Google sign-in** uses sibling service [`mdg-auth-svc`](../mdg-auth-svc) (Go + MySQL) under `/auth`.
 
 ### Environments (Vite modes)
 

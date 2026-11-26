@@ -63,7 +63,7 @@ Tempos have no map coordinates. Do not store or send `x` / `y`, and do not add a
 
 ## API
 
-Base `/v1`. JSON. Times are ISO-8601. Errors:
+Base `/tempos`. JSON. Times are ISO-8601. Errors:
 
 ```json
 { "error": { "code": "not_found", "message": "Tempo t_dns was not found." } }

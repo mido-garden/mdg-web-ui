@@ -26,7 +26,7 @@ export const config = Object.freeze({
 
   /**
    * Tempo/garden API (mdg-tempo-svc). Empty disables remote garden calls (local store only).
-   * Dev default: http://localhost:8081/v1
+   * Dev default: http://localhost:8081
    */
   tempoApiBaseUrl: stripTrailingSlash(import.meta.env.VITE_TEMPO_API_BASE_URL || ''),
   appName: import.meta.env.VITE_APP_NAME || 'Mitdo',

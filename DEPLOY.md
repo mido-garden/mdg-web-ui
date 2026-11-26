@@ -116,7 +116,7 @@ Deploy the API services with separate public hostnames:
 - `api.mitdo.cloud` → `mdg-auth-svc`
 - `tempo.mitdo.cloud` → `mdg-tempo-svc`
 
-The public API paths do not include `/v1`. Examples:
+The public API paths use service contexts: auth `/auth/*` and Tempo `/tempos/*`. Examples:
 
 ```text
 https://api.mitdo.cloud/auth/google
